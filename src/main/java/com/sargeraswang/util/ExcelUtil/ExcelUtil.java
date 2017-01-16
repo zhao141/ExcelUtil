@@ -9,12 +9,16 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.poi.hssf.usermodel.*;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.util.CellReference;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.text.MessageFormat;
@@ -54,13 +58,13 @@ public class ExcelUtil {
      * 获取cell类型的文字描述
      *
      * @param cellType <pre>
-     *                 Cell.CELL_TYPE_BLANK
-     *                 Cell.CELL_TYPE_BOOLEAN
-     *                 Cell.CELL_TYPE_ERROR
-     *                 Cell.CELL_TYPE_FORMULA
-     *                 Cell.CELL_TYPE_NUMERIC
-     *                 Cell.CELL_TYPE_STRING
-     *                 </pre>
+     *                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 Cell.CELL_TYPE_BLANK
+     *                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 Cell.CELL_TYPE_BOOLEAN
+     *                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 Cell.CELL_TYPE_ERROR
+     *                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 Cell.CELL_TYPE_FORMULA
+     *                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 Cell.CELL_TYPE_NUMERIC
+     *                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 Cell.CELL_TYPE_STRING
+     *                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 </pre>
      * @return
      */
     private static String getCellTypeByInt(int cellType) {
@@ -347,25 +351,25 @@ public class ExcelUtil {
     /**
      * 把Excel的数据封装成voList
      *
-     * @param clazz       vo的Class
-     * @param inputStream excel输入流
-     * @param pattern     如果有时间数据，设定输入格式。默认为"yyy-MM-dd"
-     * @param logs        错误log集合
-     * @param arrayCount  如果vo中有数组类型,那就按照index顺序,把数组应该有几个值写上.
+     * @param clazz      vo的Class
+     * @param file       目标文件
+     * @param pattern    如果有时间数据，设定输入格式。默认为"yyy-MM-dd"
+     * @param logs       错误log集合
+     * @param arrayCount 如果vo中有数组类型,那就按照index顺序,把数组应该有几个值写上.
      * @return voList
      * @throws RuntimeException
      */
     @SuppressWarnings("unchecked")
-    public static <T> Collection<T> importExcel(Class<T> clazz, InputStream inputStream,
-                                                String pattern, ExcelLogs logs, Integer... arrayCount) {
-        HSSFWorkbook workBook = null;
+    public static <T> Collection<T> importExcel(Class<T> clazz, File file,
+                                                String pattern, ExcelLogs logs, Integer... arrayCount) throws Exception {
+        Workbook workBook = null;
         try {
-            workBook = new HSSFWorkbook(inputStream);
-        } catch (IOException e) {
-            LG.error(e.toString(), e);
+            workBook = new HSSFWorkbook(new FileInputStream(file));
+        } catch (Exception e) {
+            workBook = new XSSFWorkbook(new FileInputStream(file));
         }
         List<T> list = new ArrayList<T>();
-        HSSFSheet sheet = workBook.getSheetAt(0);
+        Sheet sheet = workBook.getSheetAt(0);
         Iterator<Row> rowIterator = sheet.rowIterator();
         try {
             List<ExcelLog> logList = new ArrayList<ExcelLog>();
@@ -419,6 +423,7 @@ public class ExcelUtil {
                     List<FieldForSortting> fields = sortFieldByAnno(clazz);
                     for (FieldForSortting ffs : fields) {
                         Field field = ffs.getField();
+                        cellIndex = ffs.getIndex();
                         field.setAccessible(true);
                         if (field.getType().isArray()) {
                             Integer count = arrayCount[arrayIndex];
@@ -439,10 +444,8 @@ public class ExcelUtil {
                                     log.append(";");
                                     logs.setHasError(true);
                                 }
-                                cellIndex++;
                             }
                             field.set(t, value);
-                            arrayIndex++;
                         } else {
                             Cell cell = row.getCell(cellIndex);
                             String errMsg = validateCell(cell, field, cellIndex);
@@ -467,6 +470,18 @@ public class ExcelUtil {
                                     if (value instanceof String && !field.getType().equals(String.class)
                                             && StringUtils.isNotBlank(annoCell.defaultValue())) {
                                         value = annoCell.defaultValue();
+                                    } else if (field.getType().equals(String.class)) {
+                                        if (value instanceof Double) {
+                                            value = String.valueOf(Math.round(Double.parseDouble(value.toString())));
+                                        } else if (value instanceof Long) {
+                                            value = String.valueOf(Math.round(Long.parseLong(value.toString())));
+                                        } else if (value instanceof Integer) {
+                                            value = value.toString();
+                                        }
+                                    } else if (field.getType().equals(Integer.class)) {
+                                        if (value instanceof Double) {
+                                            value = (int) Math.round(Double.parseDouble(value.toString()));
+                                        }
                                     }
                                 }
                                 field.set(t, value);
@@ -476,7 +491,6 @@ public class ExcelUtil {
                                 log.append(";");
                                 logs.setHasError(true);
                             }
-                            cellIndex++;
                         }
                     }
                     list.add(t);
@@ -524,8 +538,7 @@ public class ExcelUtil {
             List<Integer> cellTypes = Arrays.asList(integers);
 
             // 如果類型不在指定範圍內,並且沒有默認值
-            if (!(cellTypes.contains(cell.getCellType()))
-                    || StringUtils.isNotBlank(annoCell.defaultValue())
+            if (StringUtils.isNotBlank(annoCell.defaultValue())
                     && cell.getCellType() == Cell.CELL_TYPE_STRING) {
                 StringBuilder strType = new StringBuilder();
                 for (int i = 0; i < cellTypes.size(); i++) {

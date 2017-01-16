@@ -18,12 +18,11 @@ import java.util.Map;
  */
 public class TestImportMap {
   @SuppressWarnings("rawtypes")
-  public static void main(String[] args) throws FileNotFoundException {
+  public static void main(String[] args) throws Exception {
     File f=new File("/Users/SagerasWang/Desktop/test.xls");
-    InputStream inputStream= new FileInputStream(f);
-    
+
     ExcelLogs logs =new ExcelLogs();
-    Collection<Map> importExcel = ExcelUtil.importExcel(Map.class, inputStream, "yyyy/MM/dd HH:mm:ss", logs , 0);
+    Collection<Map> importExcel = ExcelUtil.importExcel(Map.class, f, "yyyy/MM/dd HH:mm:ss", logs , 0);
     
     for(Map m : importExcel){
       System.out.println(m);
